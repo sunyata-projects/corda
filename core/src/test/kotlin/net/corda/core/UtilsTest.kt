@@ -14,9 +14,11 @@ import net.corda.core.serialization.serialize
 import net.corda.core.transactions.CoreTransaction
 import net.corda.core.transactions.SignedTransaction
 import net.corda.core.utilities.getOrThrow
+import net.corda.testing.core.SerializationEnvironmentRule
 import net.corda.testing.core.TestIdentity
 import net.corda.testing.internal.setGlobalSerialization
 import org.assertj.core.api.Assertions.*
+import org.junit.Rule
 import org.junit.Test
 import rx.Observable
 import rx.subjects.PublishSubject
@@ -24,6 +26,10 @@ import java.util.*
 import java.util.concurrent.CancellationException
 
 class UtilsTest {
+    @Rule
+    @JvmField
+    val testSerialization = SerializationEnvironmentRule(true)
+
     @Test
     fun `toFuture - single item observable`() {
         val subject = PublishSubject.create<String>()
@@ -140,7 +146,6 @@ class UtilsTest {
             txs
         }
 
-        setGlobalSerialization(true)
         val random = SplittableRandom()
         for (i in 1..100) {
             val txs = transactions.generateOrFail(random)
