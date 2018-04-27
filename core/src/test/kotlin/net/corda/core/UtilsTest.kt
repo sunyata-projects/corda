@@ -95,56 +95,56 @@ class UtilsTest {
 
         val testIdentity = TestIdentity.fresh("asd")
 
-        val N = 4
+        val N = 10
         // generate random tx DAG
-        val outOfOrderTransactions = Generator.replicate(N, Generator.string().map { SecureHash.sha256(it) }).flatMap { ids ->
-            val forwardsGenerators = (0 until ids.size).map { i ->
-                Generator.sampleBernoulli(ids.subList(i + 1, ids.size), 0.8).map { outputs -> ids[i] to outputs }
+        val ids = (1..N).map { SecureHash.sha256("$it") }
+        val forwardsGenerators = (0 until ids.size).map { i ->
+            Generator.sampleBernoulli(ids.subList(i + 1, ids.size), 0.8).map { outputs -> ids[i] to outputs }
+        }
+        val transactions = Generator.sequence(forwardsGenerators).map { forwardGraph ->
+            val backGraph = forwardGraph.flatMap { it.second.map { output -> it.first to output } }.fold(HashMap<SecureHash, HashSet<SecureHash>>()) { backGraph, edge ->
+                backGraph.getOrPut(edge.second) { HashSet() }.add(edge.first)
+                backGraph
             }
-            val transactions = Generator.sequence(forwardsGenerators).map { forwardGraph ->
-                val backGraph = forwardGraph.flatMap { it.second.map { output -> it.first to output } }.fold(HashMap<SecureHash, HashSet<SecureHash>>()) { backGraph, edge ->
-                    backGraph.getOrPut(edge.second) { HashSet() }.add(edge.first)
-                    backGraph
+            val outrefCounts = HashMap<SecureHash, Int>()
+            val transactions = ArrayList<SignedTransaction>()
+            for ((id, outputs) in forwardGraph) {
+                val inputs = (backGraph[id]?.toList() ?: emptyList()).map { inputTxId ->
+                    val ref = outrefCounts.compute(inputTxId) { _, count ->
+                        if (count == null) {
+                            0
+                        } else {
+                            count + 1
+                        }
+                    }!!
+                    StateRef(inputTxId, ref)
                 }
-                val outrefCounts = HashMap<SecureHash, Int>()
-                val transactions = ArrayList<SignedTransaction>()
-                for ((id, outputs) in forwardGraph) {
-                    val inputs = (backGraph[id]?.toList() ?: emptyList()).map { inputTxId ->
-                        val ref = outrefCounts.compute(inputTxId) { _, count ->
-                            if (count == null) {
-                                0
-                            } else {
-                                count + 1
-                            }
-                        }!!
-                        StateRef(inputTxId, ref)
-                    }
-                    val tx = DummyTransaction(id, inputs, outputs.size, testIdentity.party)
-                    val bits = tx.serialize().bytes
-                    val sig = TransactionSignature(testIdentity.keyPair.private.sign(bits).bytes, testIdentity.publicKey, SignatureMetadata(0, 0))
-                    val stx = SignedTransaction(tx, listOf(sig))
-                    transactions.add(stx)
+                if (id in inputs.map { it.txhash }) {
+                    throw IllegalStateException("ASD")
                 }
-                transactions
+                val tx = DummyTransaction(id, inputs, outputs.size, testIdentity.party)
+                val bits = tx.serialize().bytes
+                val sig = TransactionSignature(testIdentity.keyPair.private.sign(bits).bytes, testIdentity.publicKey, SignatureMetadata(0, 0))
+                val stx = SignedTransaction(tx, listOf(sig))
+                transactions.add(stx)
             }
+            transactions
+        }
 
-            transactions.combine(Generator.intRange(0, N - 1), Generator.intRange(0, N - 2)) { txs, i, j ->
-                val k = 0 // if (i == j) i + 1 else j
-                val tmp = txs[i]
-                txs[i] = txs[k]
-                txs[k] = tmp
-                txs
-            }
+        // Swap two random items
+        transactions.combine(Generator.intRange(0, N - 1), Generator.intRange(0, N - 2)) { txs, i, j ->
+            val k = 0 // if (i == j) i + 1 else j
+            val tmp = txs[i]
+            txs[i] = txs[k]
+            txs[k] = tmp
+            txs
         }
 
         setGlobalSerialization(true)
         val random = SplittableRandom()
-        for (i in 1 .. 100) {
-            println("Generating..")
-            val txs = outOfOrderTransactions.generateOrFail(random)
-            println("Sorting..")
+        for (i in 1..100) {
+            val txs = transactions.generateOrFail(random)
             val ordered = Observable.from(txs).topologicalSort(emptyList()).toList().toBlocking().first()
-            println("Checking..")
             checkTopologicallyOrdered(ordered)
         }
     }
@@ -153,7 +153,7 @@ class UtilsTest {
         val outputs = HashSet<StateRef>()
         for (tx in txs) {
             if (!outputs.containsAll(tx.inputs)) {
-                throw IllegalStateException("Transaction $tx's inputs are not satisfied by $outputs")
+                throw IllegalStateException("Transaction $tx's inputs ${tx.inputs} are not satisfied by $outputs")
             }
             outputs.addAll(getOutputStateRefs(tx))
         }
