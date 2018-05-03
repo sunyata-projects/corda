@@ -549,7 +549,7 @@ class RPCClientProxyHandler(
     }
 }
 
-private typealias RpcObservableMap = Cache<InvocationId, UnicastSubject<Notification<*>>>
+typealias RpcObservableMap = Cache<InvocationId, UnicastSubject<Notification<*>>>
 private typealias RpcReplyMap = ConcurrentHashMap<InvocationId, SettableFuture<Any?>>
 private typealias CallSiteMap = ConcurrentHashMap<InvocationId, Throwable?>
 
