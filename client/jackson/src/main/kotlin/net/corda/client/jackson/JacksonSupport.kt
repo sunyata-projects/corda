@@ -1,37 +1,45 @@
 package net.corda.client.jackson
 
+import com.fasterxml.jackson.annotation.JsonAutoDetect
 import com.fasterxml.jackson.annotation.JsonIgnore
 import com.fasterxml.jackson.annotation.JsonProperty
+import com.fasterxml.jackson.annotation.PropertyAccessor
 import com.fasterxml.jackson.core.*
 import com.fasterxml.jackson.databind.*
 import com.fasterxml.jackson.databind.deser.std.NumberDeserializers
 import com.fasterxml.jackson.databind.module.SimpleModule
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
 import com.fasterxml.jackson.module.kotlin.KotlinModule
+import net.corda.core.CordaOID
 import net.corda.core.contracts.Amount
 import net.corda.core.contracts.ContractState
 import net.corda.core.contracts.StateRef
 import net.corda.core.crypto.*
-import net.corda.core.crypto.CompositeKey
-import net.corda.core.identity.AbstractParty
-import net.corda.core.identity.AnonymousParty
-import net.corda.core.identity.CordaX500Name
-import net.corda.core.identity.Party
+import net.corda.core.identity.*
+import net.corda.core.internal.CertRole
+import net.corda.core.internal.DigitalSignatureWithCert
 import net.corda.core.internal.uncheckedCast
 import net.corda.core.messaging.CordaRPCOps
-import net.corda.core.node.NodeInfo
 import net.corda.core.node.services.IdentityService
 import net.corda.core.serialization.SerializedBytes
 import net.corda.core.serialization.deserialize
-import net.corda.core.serialization.serialize
-import net.corda.core.transactions.*
+import net.corda.core.transactions.CoreTransaction
+import net.corda.core.transactions.NotaryChangeWireTransaction
+import net.corda.core.transactions.SignedTransaction
+import net.corda.core.transactions.WireTransaction
+import net.corda.core.utilities.NetworkHostAndPort
 import net.corda.core.utilities.OpaqueBytes
-import net.corda.core.utilities.base58ToByteArray
 import net.corda.core.utilities.base64ToByteArray
-import net.corda.core.utilities.toBase64
-import net.i2p.crypto.eddsa.EdDSAPublicKey
+import net.corda.core.utilities.toBase58
+import org.bouncycastle.asn1.*
+import org.bouncycastle.asn1.x500.X500Name
+import org.bouncycastle.asn1.x509.*
+import org.bouncycastle.cert.X509CertificateHolder
+import java.lang.reflect.Modifier
 import java.math.BigDecimal
 import java.security.PublicKey
+import java.security.cert.CertPath
+import java.security.cert.X509Certificate
 import java.util.*
 
 /**
@@ -81,6 +89,8 @@ object JacksonSupport {
             addSerializer(SecureHash.SHA256::class.java, SecureHashSerializer)
             addDeserializer(SecureHash::class.java, SecureHashDeserializer())
             addDeserializer(SecureHash.SHA256::class.java, SecureHashDeserializer())
+            addSerializer(NetworkHostAndPort::class.java, ToStringSerializer)
+            addDeserializer(NetworkHostAndPort::class.java, NetworkHostAndPortDeserializer)
 
             // Public key types
             addSerializer(PublicKey::class.java, PublicKeySerializer)
@@ -88,8 +98,16 @@ object JacksonSupport {
 
             // For NodeInfo
             // TODO this tunnels the Kryo representation as a Base58 encoded string. Replace when RPC supports this.
-            addSerializer(NodeInfo::class.java, NodeInfoSerializer)
-            addDeserializer(NodeInfo::class.java, NodeInfoDeserializer)
+//            addSerializer(NodeInfo::class.java, NodeInfoSerializer)
+//            addDeserializer(NodeInfo::class.java, NodeInfoDeserializer)
+
+            addSerializerFor<PartyAndCertificate> {
+                customObject {
+                    writeObjectField("name", it.name)
+                    writeObjectField("owningKey", it.owningKey)
+                    writeObjectField("certPath", it.certPath)
+                }
+            }
 
             // For Amount
             addSerializer(Amount::class.java, AmountSerializer)
@@ -99,14 +117,145 @@ object JacksonSupport {
             addDeserializer(OpaqueBytes::class.java, OpaqueBytesDeserializer)
             addSerializer(OpaqueBytes::class.java, OpaqueBytesSerializer)
 
+            addSerializer(SerializedBytesSerializer)
+
             // For X.500 distinguished names
             addDeserializer(CordaX500Name::class.java, CordaX500NameDeserializer)
             addSerializer(CordaX500Name::class.java, CordaX500NameSerializer)
+
+            addSerializerFor<DigitalSignatureWithCert> {
+                customObject {
+                    writeObjectField("by", it.by)
+                    writeObjectField("bytes", it.bytes)
+                }
+            }
+
+            addSerializerFor<ByteArray> { writeString(it.toBase58()) }
+            addSerializerFor<Date> { writeObject(it.toInstant()) }
+            addSerializerFor<CertPath> { writeObject(it.certificates) }
+            addSerializerFor<X509Certificate> {
+                val holder = X509CertificateHolder(it.encoded)
+                val asn1 = holder.toASN1Structure()
+                customObject {
+                    writeObjectField("version", asn1.version)
+                    writeObjectField("serialNumber", asn1.serialNumber)
+                    writeObjectField("issuer", asn1.issuer)
+                    customObject("validity") {
+                        writeObjectField("notBefore", asn1.startDate)
+                        writeObjectField("notAfter", asn1.endDate)
+                    }
+                    writeObjectField("subject", asn1.subject)
+                    writeObjectField("subjectPublicKey", asn1.subjectPublicKeyInfo)
+                    writeObjectField("issuerUniqueID", asn1.tbsCertificate.issuerUniqueId)
+                    writeObjectField("subjectUniqueID", asn1.tbsCertificate.subjectUniqueId)
+                    writeObjectField("extensions", holder.extensions)
+                    writeObjectField("signatureAlgorithm", holder.signatureAlgorithm)
+                    writeObjectField("signatureValue", holder.signature)
+                }
+            }
+            addSerializer(AlgorithmIdentifierSerializer)
+            addSerializerFor<Extensions> { writeObject(it.toASN1Primitive()) }
+            addSerializer(ExtensionSerializer)
+            addSerializerFor<ASN1Null> { writeNull() }
+            addSerializerFor<ASN1Boolean> { writeBoolean(it.isTrue) }
+            addSerializerFor<ASN1Integer> { writeNumber(it.value) }
+            addSerializerFor<ASN1Enumerated> { writeNumber(it.value) }
+            addSerializer(ASN1ObjectIdentifier::class.java, ToStringSerializer)
+            addSerializerFor<ASN1UTCTime> { writeObject(it.adjustedDate) }
+            addSerializerFor<ASN1GeneralizedTime> { writeObject(it.date) }
+            addSerializerFor<ASN1OctetString> { writeObject(it.octets) }
+            addSerializerFor<ASN1BitString> { writeObject(it.bytes) }
+            addSerializerFor<ASN1Sequence> { writeObject(it.toArray()) }
+            addSerializerFor<ASN1Set> { writeObject(it.toArray()) }
+            addSerializerFor<Time> { writeObject(it.date) }
+            addSerializer(X500Name::class.java, ToStringSerializer)
+            addSerializerFor<SubjectPublicKeyInfo> { writeObject(Crypto.toSupportedPublicKey(it)) }
+            addSerializerFor<AuthorityKeyIdentifier> {
+                customObject {
+                    writeObjectField("keyIdentifier", it.keyIdentifier)
+                    writeObjectField("authorityCertIssuer", it.authorityCertIssuer)
+                    writeObjectField("authorityCertSerialNumber", it.authorityCertSerialNumber)
+                }
+            }
+            addSerializerFor<GeneralName> { writeObject(it.name) }
 
             // Mixins for transaction types to prevent some properties from being serialized
             setMixInAnnotation(SignedTransaction::class.java, SignedTransactionMixin::class.java)
             setMixInAnnotation(WireTransaction::class.java, WireTransactionMixin::class.java)
         }
+    }
+
+    private object AlgorithmIdentifierSerializer : JsonSerializer<AlgorithmIdentifier>() {
+        val signatureSchemes = Crypto.supportedSignatureSchemes().associateBy { it.signatureOID }
+
+        override fun serialize(value: AlgorithmIdentifier, gen: JsonGenerator, serializers: SerializerProvider) {
+            val sigScheme = signatureSchemes[value]
+            if (sigScheme != null) {
+                gen.writeString(sigScheme.schemeCodeName)
+            } else {
+                gen.customObject {
+                    writeObjectField("algorithm", value.algorithm)
+                    writeObjectField("parameters", value.parameters)
+                }
+            }
+        }
+
+        override fun handledType(): Class<AlgorithmIdentifier> = AlgorithmIdentifier::class.java
+    }
+
+    private object ExtensionSerializer : JsonSerializer<Extension>() {
+        val knownExtensions = mapOf(
+                "2.5.29.14" to Ext("subjectKeyIdentifier") { SubjectKeyIdentifier.getInstance(it).keyIdentifier },
+                "2.5.29.15" to Ext("keyUsage", ::keyUsageList),
+                "2.5.29.19" to Ext("basicConstraints", BasicConstraints::getInstance),
+                "2.5.29.30" to Ext("nameConstraints", NameConstraints::getInstance),
+                "2.5.29.35" to Ext("authorityKeyIdentifier", AuthorityKeyIdentifier::getInstance),
+                "2.5.29.37" to Ext("extKeyUsage", ::extKeyUsageList),
+                CordaOID.X509_EXTENSION_CORDA_ROLE to Ext("cordaCertRole", CertRole.Companion::getInstance)
+        )
+
+        override fun serialize(value: Extension, gen: JsonGenerator, serializers: SerializerProvider) {
+            val ext = knownExtensions[value.extnId.id]
+            gen.customObject {
+                if (ext != null) {
+                    writeObjectField(ext.fieldName, ext.serializer(value.extnValue.octets))
+                } else {
+                    writeObjectField("extnID", value.extnId)
+                    writeBooleanField("critical", value.isCritical)
+                    writeObjectField("extnValue", value.extnValue)
+                }
+            }
+        }
+
+        override fun handledType(): Class<Extension> = Extension::class.java
+
+        private val keyUsages = KeyUsage::class.java
+                .fields
+                .filter { Modifier.isStatic(it.modifiers) && it.type == Integer.TYPE }
+                .map { it.get(null) as Int to it.name }
+
+        private fun keyUsageList(bytes: ByteArray): List<String> {
+            val keyUsage = KeyUsage.getInstance(bytes)
+            return keyUsages.mapNotNull { (bit, name) -> if (keyUsage.hasUsages(bit)) name else null }
+        }
+
+        private val keyPurposeIds = KeyPurposeId::class.java
+                .fields
+                .filter { Modifier.isStatic(it.modifiers) && it.type == KeyPurposeId::class.java }
+                .map { it.get(null) as KeyPurposeId to it.name }
+
+        private fun extKeyUsageList(bytes: ByteArray): List<String> {
+            val extKeyUsage = ExtendedKeyUsage.getInstance(bytes)
+            return keyPurposeIds.mapNotNull { (id, name) -> if (extKeyUsage.hasKeyPurposeId(id)) name else null }
+        }
+
+        open class Ext(val fieldName: String, val serializer: (ByteArray) -> Any)
+    }
+
+    private inline fun <reified T> SimpleModule.addSerializerFor(crossinline serializer: JsonGenerator.(T) -> Unit) {
+        addSerializer(T::class.java, object : JsonSerializer<T>() {
+            override fun serialize(value: T, gen: JsonGenerator, serializers: SerializerProvider) = gen.serializer(value)
+        })
     }
 
     /**
@@ -118,8 +267,11 @@ object JacksonSupport {
      */
     @JvmStatic
     @JvmOverloads
-    fun createDefaultMapper(rpc: CordaRPCOps, factory: JsonFactory = JsonFactory(),
-                            fuzzyIdentityMatch: Boolean = false): ObjectMapper = configureMapper(RpcObjectMapper(rpc, factory, fuzzyIdentityMatch))
+    fun createDefaultMapper(rpc: CordaRPCOps,
+                            factory: JsonFactory = JsonFactory(),
+                            fuzzyIdentityMatch: Boolean = false): ObjectMapper {
+        return configureMapper(RpcObjectMapper(rpc, factory, fuzzyIdentityMatch))
+    }
 
     /** For testing or situations where deserialising parties is not required */
     @JvmStatic
@@ -135,17 +287,31 @@ object JacksonSupport {
      */
     @JvmStatic
     @JvmOverloads
-    fun createInMemoryMapper(identityService: IdentityService, factory: JsonFactory = JsonFactory(),
-                             fuzzyIdentityMatch: Boolean = false) = configureMapper(IdentityObjectMapper(identityService, factory, fuzzyIdentityMatch))
+    fun createInMemoryMapper(identityService: IdentityService,
+                             factory: JsonFactory = JsonFactory(),
+                             fuzzyIdentityMatch: Boolean = false): ObjectMapper {
+        return configureMapper(IdentityObjectMapper(identityService, factory, fuzzyIdentityMatch))
+    }
 
-    private fun configureMapper(mapper: ObjectMapper): ObjectMapper = mapper.apply {
-        enable(SerializationFeature.INDENT_OUTPUT)
-        enable(DeserializationFeature.ACCEPT_SINGLE_VALUE_AS_ARRAY)
-        enable(DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS)
+    private fun configureMapper(mapper: ObjectMapper): ObjectMapper {
+        return mapper.apply {
+            setVisibility(PropertyAccessor.ALL, JsonAutoDetect.Visibility.NONE)
+            setVisibility(PropertyAccessor.FIELD, JsonAutoDetect.Visibility.ANY)
+            enable(SerializationFeature.INDENT_OUTPUT)
+            enable(DeserializationFeature.ACCEPT_SINGLE_VALUE_AS_ARRAY)
+            enable(DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS)
+            disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
 
-        registerModule(JavaTimeModule())
-        registerModule(cordaModule)
-        registerModule(KotlinModule())
+            registerModule(JavaTimeModule())
+            registerModule(cordaModule)
+            registerModule(KotlinModule())
+        }
+    }
+
+    object NetworkHostAndPortDeserializer : JsonDeserializer<NetworkHostAndPort>() {
+        override fun deserialize(parser: JsonParser, ctxt: DeserializationContext): NetworkHostAndPort {
+            return NetworkHostAndPort.parse(parser.text)
+        }
     }
 
     object ToStringSerializer : JsonSerializer<Any>() {
@@ -173,7 +339,11 @@ object JacksonSupport {
 
     object PartySerializer : JsonSerializer<Party>() {
         override fun serialize(obj: Party, generator: JsonGenerator, provider: SerializerProvider) {
-            generator.writeString(obj.name.toString())
+//            generator.writeObject(obj.name)
+            generator.customObject {
+                writeObjectField("name", obj.name)
+                writeObjectField("owningKey", obj.owningKey)
+            }
         }
     }
 
@@ -187,7 +357,7 @@ object JacksonSupport {
             // The comma character is invalid in base64, and required as a separator for X.500 names. As Corda
             // X.500 names all involve at least three attributes (organisation, locality, country), they must
             // include a comma. As such we can use it as a distinguisher between the two types.
-            return if (parser.text.contains(",")) {
+            return if ("," in parser.text) {
                 val principal = CordaX500Name.parse(parser.text)
                 mapper.wellKnownPartyFromX500Name(principal) ?: throw JsonParseException(parser, "Could not find a Party with name $principal")
             } else {
@@ -233,24 +403,24 @@ object JacksonSupport {
         }
     }
 
-    object NodeInfoSerializer : JsonSerializer<NodeInfo>() {
-        override fun serialize(value: NodeInfo, gen: JsonGenerator, serializers: SerializerProvider) {
-            gen.writeString(Base58.encode(value.serialize().bytes))
-        }
-    }
-
-    object NodeInfoDeserializer : JsonDeserializer<NodeInfo>() {
-        override fun deserialize(parser: JsonParser, context: DeserializationContext): NodeInfo {
-            if (parser.currentToken == JsonToken.FIELD_NAME) {
-                parser.nextToken()
-            }
-            try {
-                return Base58.decode(parser.text).deserialize<NodeInfo>()
-            } catch (e: Exception) {
-                throw JsonParseException(parser, "Invalid NodeInfo ${parser.text}: ${e.message}")
-            }
-        }
-    }
+//    object NodeInfoSerializer : JsonSerializer<NodeInfo>() {
+//        override fun serialize(value: NodeInfo, gen: JsonGenerator, serializers: SerializerProvider) {
+//            gen.writeString(Base58.encode(value.serialize().bytes))
+//        }
+//    }
+//
+//    object NodeInfoDeserializer : JsonDeserializer<NodeInfo>() {
+//        override fun deserialize(parser: JsonParser, context: DeserializationContext): NodeInfo {
+//            if (parser.currentToken == JsonToken.FIELD_NAME) {
+//                parser.nextToken()
+//            }
+//            try {
+//                return Base58.decode(parser.text).deserialize()
+//            } catch (e: Exception) {
+//                throw JsonParseException(parser, "Invalid NodeInfo ${parser.text}: ${e.message}")
+//            }
+//        }
+//    }
 
     object SecureHashSerializer : JsonSerializer<SecureHash>() {
         override fun serialize(obj: SecureHash, generator: JsonGenerator, provider: SerializerProvider) {
@@ -276,7 +446,7 @@ object JacksonSupport {
 
     object PublicKeySerializer : JsonSerializer<PublicKey>() {
         override fun serialize(obj: PublicKey, generator: JsonGenerator, provider: SerializerProvider) {
-            generator.writeString(obj.encoded.toBase64())
+            generator.writeObject(obj.encoded)
         }
     }
 
@@ -299,8 +469,8 @@ object JacksonSupport {
 
     object AmountDeserializer : JsonDeserializer<Amount<*>>() {
         override fun deserialize(parser: JsonParser, context: DeserializationContext): Amount<*> {
-            try {
-                return Amount.parseCurrency(parser.text)
+            return try {
+                Amount.parseCurrency(parser.text)
             } catch (e: Exception) {
                 try {
                     val tree = parser.readValueAsTree<JsonNode>()
@@ -309,7 +479,7 @@ object JacksonSupport {
                     val token = tree["token"].asText()
                     // Attempt parsing as a currency token. TODO: This needs thought about how to extend to other token types.
                     val currency = Currency.getInstance(token)
-                    return Amount(quantity, currency)
+                    Amount(quantity, currency)
                 } catch (e2: Exception) {
                     throw JsonParseException(parser, "Invalid amount ${parser.text}", e2)
                 }
@@ -319,14 +489,32 @@ object JacksonSupport {
 
     object OpaqueBytesDeserializer : JsonDeserializer<OpaqueBytes>() {
         override fun deserialize(parser: JsonParser, ctxt: DeserializationContext): OpaqueBytes {
-            return OpaqueBytes(parser.text.toByteArray())
+            return OpaqueBytes(parser.binaryValue)
         }
     }
 
     object OpaqueBytesSerializer : JsonSerializer<OpaqueBytes>() {
         override fun serialize(value: OpaqueBytes, gen: JsonGenerator, serializers: SerializerProvider) {
-            gen.writeBinary(value.bytes)
+            gen.writeObject(value.bytes)
         }
+    }
+
+    object SerializedBytesSerializer : JsonSerializer<SerializedBytes<Any>>() {
+        override fun serialize(value: SerializedBytes<Any>, gen: JsonGenerator, serializers: SerializerProvider) {
+            val deserialize = value.deserialize()
+            if (gen.canWriteTypeId()) {
+                gen.writeTypeId(deserialize.javaClass.name)
+            }
+            gen.writeObject(deserialize)
+        }
+        override fun handledType(): Class<SerializedBytes<Any>> = uncheckedCast(SerializedBytes::class.java)
+    }
+
+    private inline fun JsonGenerator.customObject(fieldName: String? = null, gen: JsonGenerator.() -> Unit) {
+        fieldName?.let { writeFieldName(it) }
+        writeStartObject()
+        gen()
+        writeEndObject()
     }
 
     abstract class SignedTransactionMixin {
@@ -348,4 +536,3 @@ object JacksonSupport {
         @JsonIgnore abstract fun getOutputStates(): List<ContractState>
     }
 }
-

@@ -1,0 +1,29 @@
+apply plugin: 'java'
+apply plugin: 'kotlin'
+apply plugin: 'application'
+
+mainClassName = 'net.corda.blobinspector.MainKt'
+
+dependencies {
+    compile project(':node-api')
+    compile project(':client:jackson')
+    compile 'info.picocli:picocli:3.0.0'
+
+    testCompile project(':test-utils')
+    testCompile "junit:junit:$junit_version"
+}
+
+jar {
+    from(configurations.compile.collect { it.isDirectory() ? it : zipTree(it) }) {
+        exclude "META-INF/*.SF"
+        exclude "META-INF/*.DSA"
+        exclude "META-INF/*.RSA"
+    }
+    baseName 'blobinspector'
+    manifest {
+        attributes(
+                'Automatic-Module-Name': 'net.corda.blobinspector',
+                'Main-Class': 'net.corda.blobinspector.MainKt'
+        )
+    }
+}

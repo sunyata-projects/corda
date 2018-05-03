@@ -14,7 +14,7 @@ class IndentingStringBuilder(s : String = "", private val offset : Int = 4) {
     private var indenting = true
     private var indent = 0
 
-    private fun wrap(ln: String, appender: (String) -> Unit) {
+    private inline fun wrap(ln: String, appender: (String) -> Unit) {
         if ((ln.endsWith("}") || ln.endsWith("]")) && indent > 0 && ln.length == 1) {
             indent -= offset
         }
@@ -28,18 +28,14 @@ class IndentingStringBuilder(s : String = "", private val offset : Int = 4) {
 
     fun appendln(ln: String) {
         wrap(ln) {  s -> sb.appendln("${"".padStart(if (indenting) indent else 0, ' ')}$s") }
-
         indenting = true
     }
 
 
     fun append(ln: String) {
         indenting = false
-
         wrap(ln) { s -> sb.append("${"".padStart(indent, ' ')}$s") }
     }
 
-    override fun toString(): String {
-        return sb.toString()
-    }
+    override fun toString(): String = sb.toString()
 }

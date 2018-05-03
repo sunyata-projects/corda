@@ -2,10 +2,7 @@ package net.corda.core.internal
 
 import net.corda.core.CordaOID
 import net.corda.core.utilities.NonEmptySet
-import org.bouncycastle.asn1.ASN1Encodable
-import org.bouncycastle.asn1.ASN1Integer
-import org.bouncycastle.asn1.ASN1Primitive
-import org.bouncycastle.asn1.DEROctetString
+import org.bouncycastle.asn1.*
 import java.math.BigInteger
 import java.security.cert.X509Certificate
 
@@ -79,8 +76,7 @@ enum class CertRole(val validParents: NonEmptySet<CertRole?>, val isIdentity: Bo
          */
         fun extract(cert: X509Certificate): CertRole? {
             return cert.getExtensionValue(CordaOID.X509_EXTENSION_CORDA_ROLE)?.let {
-                val extensionString = DEROctetString.getInstance(it)
-                getInstance(extensionString.octets)
+                getInstance(DEROctetString.getInstance(it).octets)
             }
         }
     }
