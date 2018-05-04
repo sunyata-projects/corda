@@ -13,9 +13,9 @@ import net.corda.nodeapi.internal.serialization.DefaultWhitelist
 import net.corda.nodeapi.internal.serialization.MutableClassWhitelist
 import net.corda.nodeapi.internal.serialization.SerializationScheme
 import java.lang.reflect.Modifier
-import java.security.PublicKey
 import java.util.*
 import java.util.concurrent.ConcurrentHashMap
+import net.corda.nodeapi.internal.serialization.amqp.custom.PublicKeySerializer
 
 val AMQP_ENABLED get() = SerializationDefaults.P2P_CONTEXT.preferredSerializationVersion == amqpMagic
 
@@ -73,7 +73,7 @@ abstract class AbstractAMQPSerializationScheme(
     // Parameter "context" is unused directy but passed in by reflection. Removing it will cause failures.
     private fun registerCustomSerializers(context: SerializationContext, factory: SerializerFactory) {
         with(factory) {
-            register(publicKeySerializer)
+            register(PublicKeySerializer)
             register(net.corda.nodeapi.internal.serialization.amqp.custom.PrivateKeySerializer)
             register(net.corda.nodeapi.internal.serialization.amqp.custom.ThrowableSerializer(this))
             register(net.corda.nodeapi.internal.serialization.amqp.custom.BigDecimalSerializer)
@@ -138,8 +138,6 @@ abstract class AbstractAMQPSerializationScheme(
 
     protected abstract fun rpcClientSerializerFactory(context: SerializationContext): SerializerFactory
     protected abstract fun rpcServerSerializerFactory(context: SerializationContext): SerializerFactory
-    protected open val publicKeySerializer: CustomSerializer.Implements<PublicKey>
-            = net.corda.nodeapi.internal.serialization.amqp.custom.PublicKeySerializer
 
     private fun getSerializerFactory(context: SerializationContext): SerializerFactory {
         return serializerFactoriesForContexts.computeIfAbsent(Pair(context.whitelist, context.deserializationClassLoader)) {
