@@ -279,7 +279,7 @@ class NetworkBootstrapper {
         _contextSerializationEnv.set(SerializationEnvironmentImpl(
                 SerializationFactoryImpl().apply {
                     registerScheme(KryoParametersSerializationScheme)
-                    registerScheme(AMQPParamatersSerializationScheme)
+                    registerScheme(AMQPParametersSerializationScheme)
                 },
                 AMQP_P2P_CONTEXT)
         )
@@ -294,7 +294,7 @@ class NetworkBootstrapper {
         override fun rpcServerKryoPool(context: SerializationContext) = throw UnsupportedOperationException()
     }
 
-    private object AMQPParamatersSerializationScheme : AbstractAMQPSerializationScheme(emptyList()) {
+    private object AMQPParametersSerializationScheme : AbstractAMQPSerializationScheme(emptyList()) {
         override fun rpcClientSerializerFactory(context: SerializationContext) = throw UnsupportedOperationException()
         override fun rpcServerSerializerFactory(context: SerializationContext) = throw UnsupportedOperationException()
 
