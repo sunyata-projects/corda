@@ -28,7 +28,7 @@ class AMQPServerSerializationScheme(
                 context.deserializationClassLoader
         ).apply {
             register(RpcServerObservableSerializer())
-            register(RpcServerCordaFutureSerialiser(this))
+            register(RpcServerCordaFutureSerializer(this))
             register(RXNotificationSerializer(this))
         }
 
