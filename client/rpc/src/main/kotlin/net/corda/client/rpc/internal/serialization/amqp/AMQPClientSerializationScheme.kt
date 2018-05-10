@@ -11,16 +11,20 @@ import net.corda.nodeapi.internal.serialization.*
 import net.corda.nodeapi.internal.serialization.amqp.AbstractAMQPSerializationScheme
 import net.corda.nodeapi.internal.serialization.amqp.SerializerFactory
 import net.corda.nodeapi.internal.serialization.amqp.amqpMagic
-import net.corda.nodeapi.internal.serialization.amqp.custom.RXNotificationSerializer
 import java.util.concurrent.ConcurrentHashMap
+import net.corda.nodeapi.internal.serialization.amqp.custom.RxNotificationSerializer
 
-
+/**
+ * When set as the serialization scheme for a process, sets it to be the Corda AMQP implementation.
+ * This scheme is for use by the RPC Client calls.
+ */
 class AMQPClientSerializationScheme(
             cordappCustomSerializers: Set<SerializationCustomSerializer<*,*>>,
             serializerFactoriesForContexts: MutableMap<Pair<ClassWhitelist, ClassLoader>, SerializerFactory>
     ) : AbstractAMQPSerializationScheme(cordappCustomSerializers, serializerFactoriesForContexts) {
         constructor(cordapps: List<Cordapp>) : this(cordapps.customSerializers, ConcurrentHashMap())
 
+        @Suppress("UNUSED")
         constructor() : this(emptySet(), ConcurrentHashMap())
 
     companion object {
@@ -49,7 +53,7 @@ class AMQPClientSerializationScheme(
         return SerializerFactory(context.whitelist, ClassLoader.getSystemClassLoader()).apply {
             register(RpcClientObservableSerializer)
             register(RpcClientCordaFutureSerializer(this))
-            register(RXNotificationSerializer(this))
+            register(RxNotificationSerializer(this))
         }
     }
 
