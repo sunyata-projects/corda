@@ -1,9 +1,6 @@
 package net.corda.client.jackson
 
-import com.fasterxml.jackson.annotation.JacksonAnnotationsInside
-import com.fasterxml.jackson.annotation.JsonIgnore
-import com.fasterxml.jackson.annotation.JsonIgnoreProperties
-import com.fasterxml.jackson.annotation.JsonProperty
+import com.fasterxml.jackson.annotation.*
 import com.fasterxml.jackson.core.*
 import com.fasterxml.jackson.databind.*
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize
@@ -11,6 +8,7 @@ import com.fasterxml.jackson.databind.annotation.JsonSerialize
 import com.fasterxml.jackson.databind.deser.std.NumberDeserializers
 import com.fasterxml.jackson.databind.module.SimpleModule
 import com.fasterxml.jackson.databind.node.ObjectNode
+import com.fasterxml.jackson.databind.util.JSONPObject
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
 import com.fasterxml.jackson.module.kotlin.KotlinModule
 import com.fasterxml.jackson.module.kotlin.convertValue
@@ -19,9 +17,7 @@ import net.corda.client.jackson.internal.readValueAs
 import net.corda.core.CordaInternal
 import net.corda.core.CordaOID
 import net.corda.core.DoNotImplement
-import net.corda.core.contracts.Amount
-import net.corda.core.contracts.ContractState
-import net.corda.core.contracts.StateRef
+import net.corda.core.contracts.*
 import net.corda.core.crypto.*
 import net.corda.core.crypto.TransactionSignature
 import net.corda.core.identity.*
@@ -35,10 +31,7 @@ import net.corda.core.node.services.IdentityService
 import net.corda.core.serialization.SerializedBytes
 import net.corda.core.serialization.deserialize
 import net.corda.core.serialization.serialize
-import net.corda.core.transactions.CoreTransaction
-import net.corda.core.transactions.NotaryChangeWireTransaction
-import net.corda.core.transactions.SignedTransaction
-import net.corda.core.transactions.WireTransaction
+import net.corda.core.transactions.*
 import net.corda.core.utilities.*
 import org.bouncycastle.asn1.x509.KeyPurposeId
 import java.lang.reflect.Modifier
@@ -98,6 +91,7 @@ object JacksonSupport {
 
     val cordaModule: Module by lazy {
         SimpleModule("core").apply {
+            addDeserializer(ComponentGroup::class.java, ComponentGroupDeserializer())
             setMixInAnnotation(BigDecimal::class.java, BigDecimalMixin::class.java)
             setMixInAnnotation(X500Principal::class.java, X500PrincipalMixin::class.java)
             setMixInAnnotation(X509Certificate::class.java, X509CertificateMixin::class.java)
@@ -116,7 +110,9 @@ object JacksonSupport {
             setMixInAnnotation(DigitalSignatureWithCert::class.java, DigitalSignatureWithCertMixin::class.java)
             setMixInAnnotation(TransactionSignature::class.java, TransactionSignatureMixin::class.java)
             setMixInAnnotation(SignedTransaction::class.java, SignedTransactionMixin2::class.java)
-            setMixInAnnotation(WireTransaction::class.java, WireTransactionMixin::class.java)
+            setMixInAnnotation(WireTransaction::class.java, WireTransactionMixin2::class.java)
+            setMixInAnnotation(TransactionState::class.java, TransactionStateMixin::class.java)
+            setMixInAnnotation(Command::class.java, CommandMixin::class.java)
             setMixInAnnotation(CertPath::class.java, CertPathMixin::class.java)
             setMixInAnnotation(NodeInfo::class.java, NodeInfoMixin::class.java)
         }
@@ -233,31 +229,72 @@ object JacksonSupport {
     @ByteSequenceWithBytesProperty
     private interface DigitalSignatureWithCertMixin
 
-    @ByteSequenceWithBytesProperty
-    private interface TransactionSignatureMixin
-
     @JsonSerialize(using = SignedTransactionSerializer::class)
     @JsonDeserialize(using = SignedTransactionDeserializer::class)
     private interface SignedTransactionMixin2
 
     private class SignedTransactionSerializer : JsonSerializer<SignedTransaction>() {
         override fun serialize(value: SignedTransaction, gen: JsonGenerator, serializers: SerializerProvider) {
-            gen.jsonObject {
-                writeBinaryField("txBits", value.txBits.bytes)
-                writeObjectField("signatures", value.sigs)
-            }
+            gen.writeObject(SignedTxWrapper(value.coreTransaction, value.sigs))
         }
     }
 
     private class SignedTransactionDeserializer : JsonDeserializer<SignedTransaction>() {
-        override fun deserialize(parser: JsonParser, ctxt: DeserializationContext): SignedTransaction {
-            val mapper = parser.codec as ObjectMapper
-            val json = parser.readValueAsTree<ObjectNode>()
-            val txBits = mapper.convertValue<SerializedBytes<CoreTransaction>>(json["txBits"])
-            val signatures = json["signatures"].elements().asSequence().map { mapper.convertValue<TransactionSignature>(it) }.toList()
-            return SignedTransaction(txBits, signatures)
+        override fun deserialize(parser: JsonParser, context: DeserializationContext): SignedTransaction {
+            val wrapper = parser.readValueAs<SignedTxWrapper>()
+            return SignedTransaction(wrapper.core, wrapper.signatures)
         }
     }
+
+    private data class SignedTxWrapper(
+            @JsonTypeInfo(use = JsonTypeInfo.Id.CLASS)
+            val core: CoreTransaction,
+            val signatures: List<TransactionSignature>
+    )
+
+    @JsonIgnoreProperties(
+//            "componentGroups",
+            "requiredSigningKeys",
+            "inputs",
+            "outputs",
+            "commands",
+            "attachments",
+            "notary",
+            "timeWindow",
+            "id",
+            "availableComponentGroups",
+            "merkleTree",
+            "outputStates",
+            "groupHashes\$core_main",
+            "groupsMerkleRoots\$core_main",
+            "availableComponentNonces\$core_main",
+            "availableComponentHashes\$core_main"
+    )
+    private interface WireTransactionMixin2
+
+    private class ComponentGroupDeserializer : JsonDeserializer<ComponentGroup>() {
+        override fun deserialize(parser: JsonParser, ctxt: DeserializationContext): ComponentGroup {
+            val mapper = parser.codec as ObjectMapper
+            val tree = parser.readValueAsTree<ObjectNode>()
+            val groupIndex = tree["groupIndex"].intValue()
+            val components = tree["components"].elements().asSequence().map { mapper.convertValue<SerializedBytes<Any>>(it) }.toList()
+            return ComponentGroup(groupIndex, components)
+        }
+    }
+
+    @Suppress("unused")
+    private interface TransactionStateMixin {
+        @get:JsonTypeInfo(use = JsonTypeInfo.Id.CLASS) val data: Any
+        @get:JsonTypeInfo(use = JsonTypeInfo.Id.CLASS) val constraint: Any
+    }
+
+    @Suppress("unused")
+    private interface CommandMixin {
+        @get:JsonTypeInfo(use = JsonTypeInfo.Id.CLASS) val value: Any
+    }
+
+    @ByteSequenceWithBytesProperty
+    private interface TransactionSignatureMixin
 
     @JsonSerialize(using = SerializedBytesSerializer::class)
     @JsonDeserialize(using = SerializedBytesDeserializer::class)
@@ -364,7 +401,7 @@ object JacksonSupport {
         }
     }
 
-    @JsonDeserialize(using = PartyDeserializer::class)
+    @JsonDeserialize(`as` = Party::class)
     private interface AbstractPartyMixin
 
     @JsonSerialize(using = AnonymousPartySerializer::class)
@@ -385,7 +422,7 @@ object JacksonSupport {
         }
     }
 
-    @JsonSerialize(using = PartySerializer::class)
+    @JsonSerialize()
     private interface PartyMixin
 
     @Deprecated("This is an internal class, do not use")
