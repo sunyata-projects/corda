@@ -8,7 +8,7 @@ import net.corda.nodeapi.internal.serialization.kryo.kryoMagic
 
 class KryoServerSerializationScheme : AbstractKryoSerializationScheme() {
     override fun canDeserializeVersion(magic: CordaSerializationMagic, target: SerializationContext.UseCase): Boolean {
-        return magic == kryoMagic && target != SerializationContext.UseCase.RPCClient
+        return magic == kryoMagic && target == SerializationContext.UseCase.Checkpoint
     }
 
     override fun rpcClientKryoPool(context: SerializationContext): KryoPool = throw UnsupportedOperationException()
