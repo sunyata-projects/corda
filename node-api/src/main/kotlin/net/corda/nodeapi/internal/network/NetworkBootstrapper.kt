@@ -79,7 +79,7 @@ class NetworkBootstrapper {
         return clusteredNotaries.groupBy { it.first }.map { (k, vs) ->
             val configs = vs.map { it.second.config }
             if (configs.any { it.hasPath("notary.bftSMaRt") }) {
-                require(configs.all { it.hasPath("notary.bftSmart") }) { "Mix of BFT and non-BFT notaries with service name $k" }
+                require(configs.all { it.hasPath("notary.bftSMaRt") }) { "Mix of BFT and non-BFT notaries with service name $k" }
                 NotaryCluster.BFT(k) to vs.map { it.second.directory }
             } else {
                 NotaryCluster.CFT(k) to vs.map { it.second.directory }
