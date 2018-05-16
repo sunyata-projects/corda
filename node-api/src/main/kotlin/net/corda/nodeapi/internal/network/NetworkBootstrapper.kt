@@ -70,11 +70,9 @@ class NetworkBootstrapper {
     private fun notaryClusters(nodeDirs: List<Path>): Map<NotaryCluster, List<Path>> {
         val clusteredNotaries = mutableListOf<Pair<CordaX500Name, DirectoryAndConfig>>()
         nodeDirs.forEach {
-            if ((it / "node.conf").exists()) {
-                val c = ConfigFactory.parseFile((it / "node.conf").toFile())
-                if (c.hasPath("notary.serviceLegalName")) {
-                    clusteredNotaries.add(CordaX500Name.parse(c.getString("notary.serviceLegalName")) to DirectoryAndConfig(it, c))
-                }
+            val c = ConfigFactory.parseFile((it / "node.conf").toFile())
+            if (c.hasPath("notary.serviceLegalName")) {
+                clusteredNotaries.add(CordaX500Name.parse(c.getString("notary.serviceLegalName")) to DirectoryAndConfig(it, c))
             }
         }
         return clusteredNotaries.groupBy { it.first }.map { (k, vs) ->
