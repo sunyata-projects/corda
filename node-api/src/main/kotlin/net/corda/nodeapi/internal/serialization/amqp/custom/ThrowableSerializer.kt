@@ -2,6 +2,7 @@ package net.corda.nodeapi.internal.serialization.amqp.custom
 
 import net.corda.core.CordaRuntimeException
 import net.corda.core.CordaThrowable
+import net.corda.core.internal.constructorForDeserialization
 import net.corda.core.serialization.SerializationFactory
 import net.corda.core.utilities.contextLogger
 import net.corda.nodeapi.internal.serialization.amqp.*
@@ -23,8 +24,8 @@ class ThrowableSerializer(factory: SerializerFactory) : CustomSerializer.Proxy<T
             // Try and find a constructor
             try {
                 val constructor = constructorForDeserialization(obj.javaClass)
-                propertiesForSerializationFromConstructor(constructor!!, obj.javaClass, factory).forEach { property ->
-                    extraProperties[property.getter.name] = property.getter.propertyReader.read(obj)
+                propertiesForSerializationFromConcrete(constructor!!, obj.javaClass, factory).forEach { property ->
+                    extraProperties[property.serializer.name] = property.serializer.propertyReader.read(obj)
                 }
             } catch (e: NotSerializableException) {
                 logger.warn("Unexpected exception", e)

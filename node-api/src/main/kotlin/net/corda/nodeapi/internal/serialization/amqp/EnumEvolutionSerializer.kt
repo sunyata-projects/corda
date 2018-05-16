@@ -1,5 +1,6 @@
 package net.corda.nodeapi.internal.serialization.amqp
 
+import net.corda.core.internal.asClass
 import net.corda.core.internal.uncheckedCast
 import net.corda.core.serialization.SerializationContext
 import org.apache.qpid.proton.amqp.Symbol

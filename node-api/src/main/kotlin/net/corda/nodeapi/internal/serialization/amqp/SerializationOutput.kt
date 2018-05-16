@@ -1,5 +1,6 @@
 package net.corda.nodeapi.internal.serialization.amqp
 
+import net.corda.core.internal.AnyType
 import net.corda.core.serialization.SerializationContext
 import net.corda.core.serialization.SerializationEncoding
 import net.corda.core.serialization.SerializedBytes
@@ -106,7 +107,7 @@ open class SerializationOutput @JvmOverloads constructor(
         if (obj == null) {
             data.putNull()
         } else {
-            writeObject(obj, data, if (type == SerializerFactory.AnyType) obj.javaClass else type, context, debugIndent)
+            writeObject(obj, data, if (type == AnyType) obj.javaClass else type, context, debugIndent)
         }
     }
 
@@ -136,7 +137,7 @@ open class SerializationOutput @JvmOverloads constructor(
     }
 
     internal open fun requireSerializer(type: Type) {
-        if (type != SerializerFactory.AnyType && type != Object::class.java) {
+        if (type != AnyType && type != Object::class.java) {
             val serializer = serializerFactory.get(null, type)
             if (serializer !in serializerHistory) {
                 serializerHistory.add(serializer)

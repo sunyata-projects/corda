@@ -1,6 +1,8 @@
 package net.corda.nodeapi.internal.serialization.amqp
 
+import net.corda.core.internal.AnyType
 import net.corda.core.internal.VisibleForTesting
+import net.corda.core.internal.asClass
 import net.corda.core.serialization.EncodingWhitelist
 import net.corda.core.serialization.SerializationContext
 import net.corda.core.serialization.SerializedBytes
@@ -142,7 +144,7 @@ class DeserializationInput @JvmOverloads constructor(private val serializerFacto
                     is DescribedType -> {
                         // Look up serializer in factory by descriptor
                         val serializer = serializerFactory.get(obj.descriptor, schemas)
-                        if (SerializerFactory.AnyType != type && serializer.type != type && with(serializer.type) {
+                        if (AnyType != type && serializer.type != type && with(serializer.type) {
                                     !isSubClassOf(type) && !materiallyEquivalentTo(type)
                                 }) {
                             throw NotSerializableException("Described type with descriptor ${obj.descriptor} was " +

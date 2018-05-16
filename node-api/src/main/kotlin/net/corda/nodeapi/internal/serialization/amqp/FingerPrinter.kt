@@ -2,6 +2,9 @@ package net.corda.nodeapi.internal.serialization.amqp
 
 import com.google.common.hash.Hasher
 import com.google.common.hash.Hashing
+import net.corda.core.internal.AnyType
+import net.corda.core.internal.asClass
+import net.corda.core.internal.constructorForDeserialization
 import net.corda.core.utilities.loggerFor
 import net.corda.core.utilities.toBase64
 import java.io.NotSerializableException
@@ -94,7 +97,7 @@ class SerializerFingerPrinter : FingerPrinter {
         // serialise the object in the  first place (and thus the cache lookup fails). This is also
         // true of Any, where we need  Example<A, B> and Example<?, ?> to have the same fingerprint
         return if ((type in alreadySeen)
-                && (type !== SerializerFactory.AnyType)
+                && (type !== AnyType)
                 && (type !is TypeVariable<*>)
                 && (type !is WildcardType)) {
             hasher.putUnencodedChars(ALREADY_SEEN_HASH)
@@ -131,7 +134,7 @@ class SerializerFingerPrinter : FingerPrinter {
                 //
                 // If we treat these types as fundamentally different and alter the fingerprint we will
                 // end up breaking into the evolver when we shouldn't or, worse, evoking the carpenter.
-                    is SerializerFactory.AnyType,
+                    is AnyType,
                     is WildcardType,
                     is TypeVariable<*> -> {
                         hasher.putUnencodedChars("?").putUnencodedChars(ANY_TYPE_HASH)
@@ -192,9 +195,9 @@ class SerializerFingerPrinter : FingerPrinter {
         propertiesForSerialization(constructorForDeserialization(type), contextType ?: type, factory)
                 .serializationOrder
                 .fold(hasher.putUnencodedChars(name)) { orig, prop ->
-                    fingerprintForType(prop.getter.resolvedType, type, alreadySeen, orig, debugIndent + 1)
-                            .putUnencodedChars(prop.getter.name)
-                            .putUnencodedChars(if (prop.getter.mandatory) NOT_NULLABLE_HASH else NULLABLE_HASH)
+                    fingerprintForType(prop.serializer.resolvedType, type, alreadySeen, orig, debugIndent + 1)
+                            .putUnencodedChars(prop.serializer.name)
+                            .putUnencodedChars(if (prop.serializer.mandatory) NOT_NULLABLE_HASH else NULLABLE_HASH)
                 }
         interfacesForSerialization(type, factory).map { fingerprintForType(it, type, alreadySeen, hasher, debugIndent + 1) }
         return hasher

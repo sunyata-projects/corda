@@ -2,6 +2,7 @@ package net.corda.nodeapi.internal.serialization.amqp
 
 import com.google.common.primitives.Primitives
 import com.google.common.reflect.TypeResolver
+import net.corda.core.internal.asClass
 import net.corda.core.internal.uncheckedCast
 import net.corda.core.serialization.ClassWhitelist
 import net.corda.core.utilities.loggerFor
@@ -414,14 +415,6 @@ open class SerializerFactory(
                 DeserializedParameterizedType.make(name, classloader)
             }
         }
-    }
-
-    object AnyType : WildcardType {
-        override fun getUpperBounds(): Array<Type> = arrayOf(Object::class.java)
-
-        override fun getLowerBounds(): Array<Type> = emptyArray()
-
-        override fun toString(): String = "?"
     }
 }
 

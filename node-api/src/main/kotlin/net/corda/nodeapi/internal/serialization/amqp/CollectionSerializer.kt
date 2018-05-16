@@ -1,5 +1,6 @@
 package net.corda.nodeapi.internal.serialization.amqp
 
+import net.corda.core.internal.AnyType
 import net.corda.core.internal.uncheckedCast
 import net.corda.core.serialization.SerializationContext
 import net.corda.core.utilities.NonEmptySet
@@ -51,7 +52,7 @@ class CollectionSerializer(private val declaredType: ParameterizedType, factory:
 
         private fun deriveParametrizedType(declaredType: Type, collectionClass: Class<out Collection<*>>): ParameterizedType =
                 (declaredType as? ParameterizedType)
-                        ?: DeserializedParameterizedType(collectionClass, arrayOf(SerializerFactory.AnyType))
+                        ?: DeserializedParameterizedType(collectionClass, arrayOf(AnyType))
 
         private fun findMostSuitableCollectionType(actualClass: Class<*>): Class<out Collection<*>> =
                 supportedTypes.keys.findLast { it.isAssignableFrom(actualClass) }!!

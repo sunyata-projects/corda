@@ -1,5 +1,6 @@
 package net.corda.nodeapi.internal.serialization.amqp
 
+import net.corda.core.internal.AnyType
 import net.corda.core.internal.uncheckedCast
 import net.corda.core.serialization.SerializationContext
 import org.apache.qpid.proton.amqp.Symbol
@@ -56,7 +57,7 @@ class MapSerializer(private val declaredType: ParameterizedType, factory: Serial
 
         private fun deriveParametrizedType(declaredType: Type, collectionClass: Class<out Map<*, *>>): ParameterizedType =
                 (declaredType as? ParameterizedType)
-                        ?: DeserializedParameterizedType(collectionClass, arrayOf(SerializerFactory.AnyType, SerializerFactory.AnyType))
+                        ?: DeserializedParameterizedType(collectionClass, arrayOf(AnyType, AnyType))
 
 
         private fun findMostSuitableMapType(actualClass: Class<*>): Class<out Map<*, *>> =
