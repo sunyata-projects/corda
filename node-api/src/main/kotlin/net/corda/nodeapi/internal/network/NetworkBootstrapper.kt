@@ -60,7 +60,11 @@ class NetworkBootstrapper {
         }
     }
 
-    data class NotaryCluster(val name: CordaX500Name, val isBFT: Boolean)
+    sealed class NotaryCluster {
+        data class BFT(val name: CordaX500Name) : NotaryCluster()
+        data class CFT(val name: CordaX500Name) : NotaryCluster()
+    }
+
     data class DirectoryAndConfig(val directory: Path, val config: Config)
 
     private fun notaryClusters(nodeDirs: List<Path>): Map<NotaryCluster, List<Path>> {
@@ -77,9 +81,9 @@ class NetworkBootstrapper {
             val configs = vs.map { it.second.config }
             if (configs.any { it.hasPath("notary.bftSMaRt") }) {
                 require(configs.all { it.hasPath("notary.bftSmart") }) { "Mix of BFT and non-BFT notaries with service name $k" }
-                NotaryCluster(k, true) to vs.map { it.second.directory }
+                NotaryCluster.BFT(k) to vs.map { it.second.directory }
             } else {
-                NotaryCluster(k, false) to vs.map { it.second.directory }
+                NotaryCluster.CFT(k) to vs.map { it.second.directory }
             }
         }.toMap()
     }
@@ -92,10 +96,11 @@ class NetworkBootstrapper {
         require(nodeDirs.isNotEmpty()) { "No nodes found" }
         println("Nodes found in the following sub-directories: ${nodeDirs.map { it.fileName }}")
         notaryClusters(nodeDirs).forEach { (cluster, directories) ->
-            if (cluster.isBFT) {
-                DevIdentityGenerator.generateDistributedNotaryCompositeIdentity(directories, cluster.name, threshold = 1 + 2*directories.size/3)
-            } else {
-                DevIdentityGenerator.generateDistributedNotarySingularIdentity(directories, cluster.name)
+            when (cluster) {
+                is NotaryCluster.BFT ->
+                    DevIdentityGenerator.generateDistributedNotaryCompositeIdentity(directories, cluster.name, threshold = 1 + 2 * directories.size / 3)
+                is NotaryCluster.CFT ->
+                    DevIdentityGenerator.generateDistributedNotarySingularIdentity(directories, cluster.name)
             }
         }
         val processes = startNodeInfoGeneration(nodeDirs)
