@@ -1,8 +1,10 @@
 package net.corda.nodeapi.internal.network
 
+import com.typesafe.config.Config
 import com.typesafe.config.ConfigFactory
 import net.corda.cordform.CordformNode
 import net.corda.core.contracts.ContractClassName
+import net.corda.core.identity.CordaX500Name
 import net.corda.core.identity.Party
 import net.corda.core.internal.*
 import net.corda.core.internal.concurrent.fork
@@ -18,10 +20,7 @@ import net.corda.core.serialization.internal._contextSerializationEnv
 import net.corda.core.utilities.days
 import net.corda.core.utilities.getOrThrow
 import net.corda.core.utilities.seconds
-import net.corda.nodeapi.internal.ContractsJar
-import net.corda.nodeapi.internal.ContractsJarFile
-import net.corda.nodeapi.internal.DEV_ROOT_CA
-import net.corda.nodeapi.internal.SignedNodeInfo
+import net.corda.nodeapi.internal.*
 import net.corda.nodeapi.internal.network.NodeInfoFilesCopier.Companion.NODE_INFO_FILE_NAME_PREFIX
 import net.corda.nodeapi.internal.serialization.AMQP_P2P_CONTEXT
 import net.corda.nodeapi.internal.serialization.CordaSerializationMagic
@@ -61,6 +60,30 @@ class NetworkBootstrapper {
         }
     }
 
+    data class NotaryCluster(val name: CordaX500Name, val isBFT: Boolean)
+    data class DirectoryAndConfig(val directory: Path, val config: Config)
+
+    private fun notaryClusters(nodeDirs: List<Path>): Map<NotaryCluster, List<Path>> {
+        val clusteredNotaries = mutableListOf<Pair<CordaX500Name, DirectoryAndConfig>>()
+        nodeDirs.forEach {
+            if ((it / "node.conf").exists()) {
+                val c = ConfigFactory.parseFile((it / "node.conf").toFile())
+                if (c.hasPath("notary.serviceLegalName")) {
+                    clusteredNotaries.add(CordaX500Name.parse(c.getString("notary.serviceLegalName")) to DirectoryAndConfig(it, c))
+                }
+            }
+        }
+        return clusteredNotaries.groupBy { it.first }.map { (k, vs) ->
+            val configs = vs.map { it.second.config }
+            if (configs.any { it.hasPath("notary.bftSMaRt") }) {
+                require(configs.all { it.hasPath("notary.bftSmart") }) { "Mix of BFT and non-BFT notaries with service name $k" }
+                NotaryCluster(k, true) to vs.map { it.second.directory }
+            } else {
+                NotaryCluster(k, false) to vs.map { it.second.directory }
+            }
+        }.toMap()
+    }
+
     fun bootstrap(directory: Path, cordappJars: List<Path>) {
         directory.createDirectories()
         println("Bootstrapping local network in $directory")
@@ -68,6 +91,13 @@ class NetworkBootstrapper {
         val nodeDirs = directory.list { paths -> paths.filter { (it / "corda.jar").exists() }.toList() }
         require(nodeDirs.isNotEmpty()) { "No nodes found" }
         println("Nodes found in the following sub-directories: ${nodeDirs.map { it.fileName }}")
+        notaryClusters(nodeDirs).forEach { (cluster, directories) ->
+            if (cluster.isBFT) {
+                DevIdentityGenerator.generateDistributedNotaryCompositeIdentity(directories, cluster.name, threshold = 1 + 2*directories.size/3)
+            } else {
+                DevIdentityGenerator.generateDistributedNotarySingularIdentity(directories, cluster.name)
+            }
+        }
         val processes = startNodeInfoGeneration(nodeDirs)
         initialiseSerialization()
         try {
