@@ -1,7 +1,7 @@
 package net.corda.blobinspector
 
 import net.corda.core.serialization.SerializedBytes
-import net.corda.nodeapi.internal.serialization.AllWhitelist
+import net.corda.nodeapi.internal.serialization.kryo.AllWhitelist
 import net.corda.nodeapi.internal.serialization.amqp.SerializationOutput
 import net.corda.nodeapi.internal.serialization.amqp.SerializerFactory
 import net.corda.nodeapi.internal.serialization.AMQP_P2P_CONTEXT

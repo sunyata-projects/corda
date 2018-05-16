@@ -3,7 +3,7 @@ package net.corda.core.contracts
 import net.corda.core.crypto.SecureHash
 import net.corda.core.transactions.LedgerTransaction
 import net.corda.nodeapi.internal.serialization.AMQP_RPC_CLIENT_CONTEXT
-import net.corda.nodeapi.internal.serialization.AllWhitelist
+import net.corda.nodeapi.internal.serialization.kryo.AllWhitelist
 import net.corda.nodeapi.internal.serialization.amqp.DeserializationInput
 import net.corda.nodeapi.internal.serialization.amqp.SerializationOutput
 import net.corda.nodeapi.internal.serialization.amqp.SerializerFactory

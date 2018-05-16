@@ -11,7 +11,7 @@ import net.corda.core.serialization.serialize
 import net.corda.node.serialization.kryo.KryoServerSerializationScheme
 import net.corda.nodeapi.internal.config.SSLConfiguration
 import net.corda.nodeapi.internal.createDevKeyStores
-import net.corda.nodeapi.internal.serialization.AllWhitelist
+import net.corda.nodeapi.internal.serialization.kryo.AllWhitelist
 import net.corda.nodeapi.internal.serialization.SerializationContextImpl
 import net.corda.nodeapi.internal.serialization.SerializationFactoryImpl
 import net.corda.nodeapi.internal.serialization.kryo.kryoMagic
